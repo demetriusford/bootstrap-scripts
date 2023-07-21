@@ -32,6 +32,7 @@ var_name="$(to_uppercase "${app_name}")"
 var_name="${var_name}_DATABASE_PASSWORD"
 
 echo "export ${var_name}=\"$(pbpaste)\"" >> ~/.bash_profile
+# shellcheck disable=SC1090
 . ~/.bash_profile && pbcopy < /dev/null
 
 rails new "${app_path}" --database=postgresql && \
