@@ -1,3 +1,6 @@
 # Bootstrap Scripts
 
-> **Rationale**: After reading [MAKE](https://readmake.com/) by Pieter Levels ([@levelsio](https://github.com/levelsio)), I wanted to automate early while developing my product. Anything involving configurations, updates/upgrades, bookkeeping, and business operations will be addressed in this `README.md`.
+> Anything involving configurations, updates/upgrades, bookkeeping, and business operations </br>
+> will be addressed in this `README.md`.
+
+1. [`new-rails-app.sh`](./new-rails-app.sh): Generate a Rails application with a PostgreSQL backend
