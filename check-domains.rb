@@ -10,7 +10,7 @@ require "faraday"
 require "faraday/decode_xml"
 
 class Namecheap
-  BASE_URI = "https://api.namecheap.com/"
+  BASE_URL = "https://api.namecheap.com"
 
   attr_reader :api_user, :api_key, :client_ip
 
@@ -29,7 +29,9 @@ class Namecheap
 
     domains = {}
     domains[results["Name"]] = Date.strptime(results["Expires"], "%m/%d/%Y")
-    domains.keep_if { |_, future| (future - Date.today).to_i >= 90 }
+    domains.filter! { |_, future| (future - Date.today).to_i <= 90 }
+
+    domains.empty? ? nil : domains
   end
 
   def list_domains
@@ -56,7 +58,7 @@ class Namecheap
     }
 
     connection = Faraday.new(
-      url: BASE_URI,
+      url: BASE_URL,
       params: params.empty? ? globals : globals.merge(params),
     ) do |faraday|
       faraday.response(:xml)
