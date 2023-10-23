@@ -5,51 +5,92 @@
 # @date: 13 Oct 2023
 # @docs: https://www.namecheap.com/support/api/intro/
 
+require "yaml"
+require "faraday"
+require "faraday/decode_xml"
+
 class Namecheap
   BASE_URI = "https://api.namecheap.com/"
 
-  attr_reader :client_ip, :api_key, :username
+  attr_reader :api_user, :api_key, :client_ip
 
-  def initialize(config)
-    @client_ip = config[:client_ip]
-    @api_key = config[:api_key]
-    @username = config[:username]
+  def initialize(options = {})
+    config = YAML.load_file(
+      "#{File.dirname(__FILE__)}/credentials.yml",
+    ).transform_keys!(&:to_sym)
+
+    @api_user = options[:api_user] || config[:api_user]
+    @api_key = options[:api_key] || config[:api_key]
+    @client_ip = options[:client_ip] || config[:client_ip]
+  end
+
+  def check_domains
+    results = list_domains.results["Domain"]
+
+    domains = {}
+    domains[results["Name"]] = Date.strptime(results["Expires"], "%m/%d/%Y")
+    domains.keep_if { |_, future| (future - Date.today).to_i >= 90 }
+  end
+
+  def list_domains
+    response = request(
+      "namecheap.domains.getList",
+      {
+        "ListType": "ALL",
+        "SortBy": "EXPIREDATE",
+      },
+    )
+
+    NamecheapResponse.new(response)
   end
 
   private
 
-  def request(command, options = {})
-    params = {
-      "ApiUser" => @username,
+  def request(command, params = {})
+    globals = {
+      "ApiUser" => @api_user,
       "ApiKey" => @api_key,
-      "UserName" => @username,
+      "Username" => @api_user,
       "Command" => command,
+      "ClientIp" => @client_ip,
     }
 
-    Faraday.get(
-      BASE_URI + "/xml.response",
-      options.empty? ? params : params.merge(options),
-      { content_type: "application/xml" },
-    )
+    connection = Faraday.new(
+      url: BASE_URI,
+      params: params.empty? ? globals : globals.merge(params),
+    ) do |faraday|
+      faraday.response(:xml)
+    end
+
+    connection.get("/xml.response")
   end
 end
+
+class NamecheapError < StandardError; end
 
 class NamecheapResponse
   def initialize(response)
+    unless response.is_a?(Faraday::Response)
+      raise NamecheapError("Not a Faraday::Response class")
+    end
+
     @response = response
   end
 
+  def errors
+    errors_object = @response.body["ApiResponse"]["Errors"]
+    return errors_object.first[1] unless errors_object.nil?
+
+    {}
+  end
+
   def results
-    @response["ApiResponse"]["CommandResponse"]
+    if errors.any?
+      raise NamecheapError, "(#{errors["Number"]}) #{errors["__content__"]}"
+    end
+
+    @response.body["ApiResponse"]["CommandResponse"]["DomainGetListResult"]
   end
 end
 
-if __FILE__ == $PROGRAM_NAME
-  Namecheap.new(
-    {
-      client_ip: "0.0.0.0",
-      api_key: "s3cr3t",
-      username: "username",
-    },
-  )
-end
+pp Namecheap.new.check_domains if __FILE__ == $PROGRAM_NAME

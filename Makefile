@@ -1,6 +1,6 @@
 .PHONY: check-all rails-app
 
-code-nice:
+lint-code:
 	@find . -type f -name '*.sh' | xargs shellcheck --shell=sh
 	@rubocop --autocorrect
 

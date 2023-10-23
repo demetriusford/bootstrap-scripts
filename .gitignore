@@ -1,3 +1,6 @@
+# Sensitive
+credentials.yml
+
 *.gem
 *.rbc
 /.config
