@@ -66,7 +66,7 @@ module Namecheap
     end
 
     def expires_soon
-      @domains.select { |_, future| (future - Date.today).to_i >= 200 }
+      @domains.select { |_, later| (later - Date.today).to_i <= 90 }
     end
   end
 end
