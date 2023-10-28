@@ -1,5 +1,5 @@
 # Sensitive
-credentials.yml
+secrets.yml
 
 *.gem
 *.rbc

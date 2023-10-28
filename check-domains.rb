@@ -9,90 +9,117 @@ require "yaml"
 require "faraday"
 require "faraday/decode_xml"
 
-class Namecheap
-  BASE_URL = "https://api.namecheap.com"
+module Namecheap
+  class Config
+    OK = [:api_user, :api_key, :client_ip]
 
-  attr_reader :api_user, :api_key, :client_ip
+    attr_reader :globals
 
-  def initialize(options = {})
-    config = YAML.load_file(
-      "#{File.dirname(__FILE__)}/credentials.yml",
-    ).transform_keys!(&:to_sym)
-
-    @api_user = options[:api_user] || config[:api_user]
-    @api_key = options[:api_key] || config[:api_key]
-    @client_ip = options[:client_ip] || config[:client_ip]
-  end
-
-  def check_domains
-    results = list_domains.results["Domain"]
-
-    domains = {}
-    domains[results["Name"]] = Date.strptime(results["Expires"], "%m/%d/%Y")
-    domains.filter! { |_, future| (future - Date.today).to_i <= 90 }
-
-    domains.empty? ? nil : domains
-  end
-
-  def list_domains
-    response = request(
-      "namecheap.domains.getList",
-      {
-        "ListType": "ALL",
-        "SortBy": "EXPIREDATE",
-      },
-    )
-
-    NamecheapResponse.new(response)
-  end
-
-  private
-
-  def request(command, params = {})
-    globals = {
-      "ApiUser" => @api_user,
-      "ApiKey" => @api_key,
-      "Username" => @api_user,
-      "Command" => command,
-      "ClientIp" => @client_ip,
-    }
-
-    connection = Faraday.new(
-      url: BASE_URL,
-      params: params.empty? ? globals : globals.merge(params),
-    ) do |faraday|
-      faraday.response(:xml)
+    def initialize
+      @globals = YAML.load_file(
+        "#{File.dirname(__FILE__)}/secrets.yml",
+      ).transform_keys!(&:to_sym)
     end
 
-    connection.get("/xml.response")
+    def valid?
+      OK.all? { |key| @globals.key?(key) } && @globals.values.none?(&:empty?)
+    end
   end
 end
 
-class NamecheapError < StandardError; end
+module Namecheap
+  class Response
+    def initialize(response)
+      unless response.is_a?(Faraday::Response)
+        raise "Invalid object - expected a Faraday::Response"
+      end
 
-class NamecheapResponse
-  def initialize(response)
-    unless response.is_a?(Faraday::Response)
-      raise NamecheapError("Not a Faraday::Response class")
+      @response = response
     end
 
-    @response = response
-  end
+    def errors
+      errors_object = @response.body["ApiResponse"]["Errors"]
+      return errors_object.first[1] unless errors_object.nil?
 
-  def errors
-    errors_object = @response.body["ApiResponse"]["Errors"]
-    return errors_object.first[1] unless errors_object.nil?
-
-    {}
-  end
-
-  def results
-    if errors.any?
-      raise NamecheapError, "(#{errors["Number"]}) #{errors["__content__"]}"
+      {}
     end
 
-    @response.body["ApiResponse"]["CommandResponse"]["DomainGetListResult"]
+    def results
+      if !errors.nil? && errors.any?
+        raise "(#{errors["Number"]}) #{errors["__content__"]}"
+      end
+
+      @response.body["ApiResponse"]["CommandResponse"]["DomainGetListResult"]
+    end
   end
 end
 
-pp Namecheap.new.check_domains if __FILE__ == $PROGRAM_NAME
+module Namecheap
+  class Results
+    def initialize(results)
+      cleansed = results.is_a?(Array) ? results["Domain"] : [results["Domain"]]
+
+      @domains = {}
+      cleansed.each do |domain|
+        @domains[domain["Name"]] = Date.strptime(domain["Expires"], "%m/%d/%Y")
+      end
+    end
+
+    def expires_soon
+      @domains.select { |_, future| (future - Date.today).to_i >= 200 }
+    end
+  end
+end
+
+module Namecheap
+  class API
+    URL = "https://api.namecheap.com"
+
+    def initialize
+      config = Namecheap::Config.new
+
+      raise "Config is not valid" unless config.valid?
+
+      @api_user = config.globals[:api_user]
+      @api_key = config.globals[:api_key]
+      @client_ip = config.globals[:client_ip]
+    end
+
+    def check
+      response = request(
+        "namecheap.domains.getList", {
+          "SortBy": "EXPIREDATE",
+        }
+      )
+
+      parsed = Namecheap::Response.new(response)
+
+      Namecheap::Results
+        .new(parsed.results)
+        .expires_soon
+    end
+
+    private
+
+    def request(command, params = {})
+      globals = {
+        "ApiUser" => @api_user,
+        "ApiKey" => @api_key,
+        "Username" => @api_user,
+        "Command" => command,
+        "ClientIp" => @client_ip,
+      }
+
+      connection = Faraday.new(
+        url: URL,
+        params: params.empty? ? globals : globals.merge(params),
+      ) do |faraday|
+        faraday.response(:xml)
+      end
+
+      connection.get("/xml.response")
+    end
+  end
+end
+
+pp Namecheap::API.new.check if __FILE__ == $PROGRAM_NAME
