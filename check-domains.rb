@@ -11,18 +11,18 @@ require "faraday/decode_xml"
 
 module Namecheap
   class Config
-    OK = [:api_user, :api_key, :client_ip]
+    ALLOW = [:api_user, :api_key, :client_ip]
 
-    attr_reader :globals
+    attr_reader :params
 
     def initialize
-      @globals = YAML.load_file(
+      @params = YAML.load_file(
         "#{File.dirname(__FILE__)}/secrets.yml",
       ).transform_keys!(&:to_sym)
     end
 
     def valid?
-      OK.all? { |key| @globals.key?(key) } && @globals.values.none?(&:empty?)
+      ALLOW.all? { |key| @params.key?(key) } && @params.values.none?(&:empty?)
     end
   end
 end
@@ -30,10 +30,6 @@ end
 module Namecheap
   class Response
     def initialize(response)
-      unless response.is_a?(Faraday::Response)
-        raise "Invalid object - expected a Faraday::Response"
-      end
-
       @response = response
     end
 
@@ -45,7 +41,7 @@ module Namecheap
     end
 
     def results
-      if !errors.nil? && errors.any?
+      if errors&.any?
         raise "(#{errors["Number"]}) #{errors["__content__"]}"
       end
 
@@ -56,17 +52,19 @@ end
 
 module Namecheap
   class Results
+    ALARM_COUNT = 90
+
     def initialize(results)
-      cleansed = results.is_a?(Array) ? results["Domain"] : [results["Domain"]]
+      standard = results.is_a?(Array) ? results["Domain"] : [results["Domain"]]
 
       @domains = {}
-      cleansed.each do |domain|
+      standard.each do |domain|
         @domains[domain["Name"]] = Date.strptime(domain["Expires"], "%m/%d/%Y")
       end
     end
 
     def expires_soon
-      @domains.select { |_, later| (later - Date.today).to_i <= 90 }
+      @domains.select { |_, future| (future - Date.today).to_i <= ALARM_COUNT }
     end
   end
 end
@@ -75,21 +73,27 @@ module Namecheap
   class API
     URL = "https://api.namecheap.com"
 
+    GET_LIST = {
+      command: "namecheap.domains.getList",
+      options: {
+        "SortBy": "EXPIREDATE",
+      },
+    }
+
     def initialize
       config = Namecheap::Config.new
 
       raise "Config is not valid" unless config.valid?
 
-      @api_user = config.globals[:api_user]
-      @api_key = config.globals[:api_key]
-      @client_ip = config.globals[:client_ip]
+      @api_user = config.params[:api_user]
+      @api_key = config.params[:api_key]
+      @client_ip = config.params[:client_ip]
     end
 
     def check
-      response = request(
-        "namecheap.domains.getList", {
-          "SortBy": "EXPIREDATE",
-        }
+      response = fetch(
+        GET_LIST[:command],
+        GET_LIST[:options],
       )
 
       parsed = Namecheap::Response.new(response)
@@ -101,7 +105,7 @@ module Namecheap
 
     private
 
-    def request(command, params = {})
+    def fetch(command, params = {})
       globals = {
         "ApiUser" => @api_user,
         "ApiKey" => @api_key,
