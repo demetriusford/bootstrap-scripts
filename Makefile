@@ -1,4 +1,4 @@
-.PHONY: check-all rails-app
+.PHONY: good-code rails-app
 
 good-code:
 	@find . -type f -name '*.sh' | xargs shellcheck --shell=sh
