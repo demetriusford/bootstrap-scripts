@@ -5,24 +5,26 @@
 # @date: 13 Oct 2023
 # @docs: https://www.namecheap.com/support/api/intro/
 
-require "yaml"
 require "faraday"
 require "faraday/decode_xml"
+require "yaml_vault"
 
 module Namecheap
   class Config
-    ALLOW = [:api_user, :api_key, :client_ip]
-
     attr_reader :params
 
     def initialize
-      @params = YAML.load_file(
-        "#{File.dirname(__FILE__)}/secrets.yml",
-      ).transform_keys!(&:to_sym)
-    end
+      secrets = "#{File.dirname(__FILE__)}/secrets.yml"
+      targets = [["$", "vault"]]
+      passphrase = ENV["YAML_VAULT_PASSPHRASE"]
 
-    def valid?
-      ALLOW.all? { |key| @params.key?(key) } && @params.values.none?(&:empty?)
+      @params = YAML.load(
+        YamlVault::Main.from_file(
+          secrets,
+          targets,
+          passphrase: passphrase,
+        ).decrypt_yaml,
+      )
     end
   end
 end
@@ -33,38 +35,38 @@ module Namecheap
       @response = response
     end
 
+    def results
+      raise "(#{errors["Number"]}) #{errors["__content__"]}" if errors&.any?
+
+      @response.body["ApiResponse"]["CommandResponse"]["DomainGetListResult"]
+    end
+
+    private
+
     def errors
       errors_object = @response.body["ApiResponse"]["Errors"]
       return errors_object.first[1] unless errors_object.nil?
 
       {}
     end
-
-    def results
-      if errors&.any?
-        raise "(#{errors["Number"]}) #{errors["__content__"]}"
-      end
-
-      @response.body["ApiResponse"]["CommandResponse"]["DomainGetListResult"]
-    end
   end
 end
 
 module Namecheap
-  class Results
-    ALARM_COUNT = 90
+  class Domains
+    EXPIRE_DAYS = 90
 
     def initialize(results)
-      standard = results.is_a?(Array) ? results["Domain"] : [results["Domain"]]
+      list_result = [results["Domain"]].flatten(1)
 
-      @domains = {}
-      standard.each do |domain|
-        @domains[domain["Name"]] = Date.strptime(domain["Expires"], "%m/%d/%Y")
+      @my_domains = {}
+      list_result.each do |domain|
+        @my_domains[domain["Name"]] = Date.strptime(domain["Expires"], "%m/%d/%Y")
       end
     end
 
-    def expires_soon
-      @domains.select { |_, future| (future - Date.today).to_i <= ALARM_COUNT }
+    def show_expired
+      @my_domains.select { |_, future| (future - Date.today).to_i <= EXPIRE_DAYS }
     end
   end
 end
@@ -81,13 +83,11 @@ module Namecheap
     }
 
     def initialize
-      config = Namecheap::Config.new
+      vault = Namecheap::Config.new.params["vault"]
 
-      raise "Config is not valid" unless config.valid?
-
-      @api_user = config.params[:api_user]
-      @api_key = config.params[:api_key]
-      @client_ip = config.params[:client_ip]
+      @api_user = vault["api_user"]
+      @api_key = vault["api_key"]
+      @client_ip = vault["client_ip"]
     end
 
     def check
@@ -98,9 +98,9 @@ module Namecheap
 
       parsed = Namecheap::Response.new(response)
 
-      Namecheap::Results
+      Namecheap::Domains
         .new(parsed.results)
-        .expires_soon
+        .show_expired
     end
 
     private
