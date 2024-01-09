@@ -2,6 +2,7 @@
 
 source "https://rubygems.org"
 
-gem "rubocop-shopify", require: false
 gem "faraday"
 gem "faraday-decode_xml"
+gem "rubocop-shopify", require: false
+gem "yaml_vault"
