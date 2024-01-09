@@ -65,7 +65,7 @@ module Namecheap
       end
     end
 
-    def show_expired
+    def expires_soon
       @my_domains.select { |_, future| (future - Date.today).to_i <= EXPIRE_DAYS }
     end
   end
@@ -100,7 +100,7 @@ module Namecheap
 
       Namecheap::Domains
         .new(parsed.results)
-        .show_expired
+        .expires_soon
     end
 
     private
