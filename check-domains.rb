@@ -126,4 +126,4 @@ module Namecheap
   end
 end
 
-pp Namecheap::API.new.check.keys if __FILE__ == $PROGRAM_NAME
+pp Namecheap::API.new.check if __FILE__ == $PROGRAM_NAME
