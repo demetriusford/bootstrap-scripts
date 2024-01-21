@@ -7,7 +7,7 @@
 
 ## Generating encrypted secrets
 
-Using [@joker1007](https://github.com/joker1007/yaml_vault)'s gem:
+Using [`@joker1007`](https://github.com/joker1007/yaml_vault)'s gem:
 
 ```bash
 $ yaml_vault encrypt example.yml -o secrets.yml
