@@ -18,6 +18,8 @@ module Namecheap
       targets = [["$", "vault"]]
       passphrase = ENV["YAML_VAULT_PASSPHRASE"]
 
+      raise "passphrase is not set!" if passphrase.nil?
+
       @params = YAML.load(
         YamlVault::Main.from_file(
           secrets,
@@ -126,4 +128,4 @@ module Namecheap
   end
 end
 
-pp Namecheap::API.new.check if __FILE__ == $PROGRAM_NAME
+pp Namecheap::API.new.check.keys if __FILE__ == $PROGRAM_NAME
