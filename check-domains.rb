@@ -55,20 +55,21 @@ module Namecheap
 end
 
 module Namecheap
-  class Domains
+  class Account
     EXPIRE_DAYS = 90
 
     def initialize(results)
       list_result = [results["Domain"]].flatten(1)
 
-      @my_domains = {}
+      @domains = {}
+
       list_result.each do |domain|
-        @my_domains[domain["Name"]] = Date.strptime(domain["Expires"], "%m/%d/%Y")
+        @domains[domain["Name"]] = Date.strptime(domain["Expires"], "%m/%d/%Y")
       end
     end
 
     def expires_soon
-      @my_domains.select { |_, future| (future - Date.today).to_i <= EXPIRE_DAYS }
+      @domains.select { |_, future| (future - Date.today).to_i <= EXPIRE_DAYS }
     end
   end
 end
@@ -98,10 +99,10 @@ module Namecheap
         GET_LIST[:options],
       )
 
-      parsed = Namecheap::Response.new(response)
+      content = Namecheap::Response.new(response).results
 
-      Namecheap::Domains
-        .new(parsed.results)
+      Namecheap::Account
+        .new(content)
         .expires_soon
     end
 
@@ -128,4 +129,4 @@ module Namecheap
   end
 end
 
-pp Namecheap::API.new.check.keys if __FILE__ == $PROGRAM_NAME
+pp Namecheap::API.new.check if __FILE__ == $PROGRAM_NAME
