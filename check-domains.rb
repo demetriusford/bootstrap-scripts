@@ -7,6 +7,7 @@
 
 require "faraday"
 require "faraday/decode_xml"
+require "logger"
 require "yaml_vault"
 
 module Namecheap
@@ -129,4 +130,11 @@ module Namecheap
   end
 end
 
-pp Namecheap::API.new.check if __FILE__ == $PROGRAM_NAME
+if __FILE__ == $PROGRAM_NAME
+  logger = Logger.new($stderr, level: Logger::WARN)
+
+  namecheap = Namecheap::API.new
+  domains = namecheap.check.keys
+
+  logger.warn(domains.join(", ")) unless domains.empty?
+end
